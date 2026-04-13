@@ -1,0 +1,280 @@
+# =========================================================
+# tabs/model_tab.py — Tab 1: Model Setup
+# =========================================================
+
+import os
+import glob
+import json
+import pickle
+import time
+
+import torch
+import faiss
+import dime_v2
+
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QFrame, QFileDialog, QApplication
+)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
+
+
+class ModelTab(QWidget):
+    modelLoaded = Signal(object, object, object)  # (detector, roi_coords, thresholds)
+
+    def __init__(self):
+        super().__init__()
+        self.detector   = None
+        self.roi_coords = None
+        self._build_ui()
+
+    # ── threshold helpers ────────────────────────────────
+
+    @staticmethod
+    def _read_thresholds(model_path: str) -> list[dict]:
+        results = []
+
+        def _try_load(pkl_path: str, label: str):
+            try:
+                with open(pkl_path, "rb") as f:
+                    raw = float(pickle.load(f))
+                results.append({"label": label, "raw": raw, "effective": raw * 1.25, "path": pkl_path})
+            except Exception as e:
+                results.append({"label": label, "raw": None, "effective": None, "error": str(e), "path": pkl_path})
+
+        root_pkl = os.path.join(model_path, "dynamic_threshold.pkl")
+        if os.path.isfile(root_pkl):
+            _try_load(root_pkl, "Model (root)")
+        try:
+            for child in sorted(os.listdir(model_path)):
+                child_dir = os.path.join(model_path, child)
+                if not os.path.isdir(child_dir):
+                    continue
+                child_pkl = os.path.join(child_dir, "dynamic_threshold.pkl")
+                if os.path.isfile(child_pkl):
+                    _try_load(child_pkl, child)
+        except Exception:
+            pass
+        if not results:
+            for found in sorted(glob.glob(os.path.join(model_path, "**", "dynamic_threshold.pkl"), recursive=True)):
+                _try_load(found, os.path.relpath(found, model_path))
+        return results
+
+    @staticmethod
+    def get_roi_from_json(json_path: str) -> tuple:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        r = data.get("rectangle", {})
+        return (r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])
+
+    # ── UI build ─────────────────────────────────────────
+
+    def _build_ui(self):
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignTop)
+
+        title = QLabel("Model Setup")
+        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setStyleSheet("color:#fff; margin-bottom:10px;")
+
+        # Status card
+        self.card = QFrame()
+        self.card.setStyleSheet("background:#1a1a1a; border-radius:8px; padding:10px;")
+        card_layout = QVBoxLayout()
+        card_layout.setSpacing(4)
+        self.lbl_model_path   = QLabel("No model loaded")
+        self.lbl_model_path.setStyleSheet("color:#888; font-size:13px;")
+        self.lbl_model_status = QLabel("⏳ Waiting for model…")
+        self.lbl_model_status.setStyleSheet("color:#f80; font-size:14px; font-weight:bold;")
+        card_layout.addWidget(self.lbl_model_path)
+        card_layout.addWidget(self.lbl_model_status)
+        self.card.setLayout(card_layout)
+
+        # Threshold panel
+        thresh_title = QLabel("Detection Threshold")
+        thresh_title.setFont(QFont("Arial", 13, QFont.Bold))
+        thresh_title.setStyleSheet("color:#aaa; margin-top:4px;")
+
+        self.thresh_panel = QFrame()
+        self.thresh_panel.setStyleSheet(
+            "background:#12141a; border:1px solid #2a2d3a; border-radius:8px; padding:8px;"
+        )
+        self.thresh_layout = QVBoxLayout(self.thresh_panel)
+        self.thresh_layout.setSpacing(4)
+        self.thresh_layout.setContentsMargins(8, 6, 8, 6)
+        ph = QLabel("No threshold loaded yet")
+        ph.setStyleSheet("color:#555; font-size:12px; font-style:italic;")
+        self.thresh_layout.addWidget(ph)
+
+        # Buttons
+        self.btn_load = QPushButton("📦  Select Model Directory")
+        self.btn_load.setFixedHeight(44)
+        self.btn_load.setStyleSheet(
+            "QPushButton { background:#1a5276; color:white; font-size:14px; font-weight:bold; border-radius:6px; }"
+            "QPushButton:hover { background:#2471a3; }"
+        )
+        self.btn_load.clicked.connect(self._load_model)
+
+        self.btn_reload = QPushButton("🔄  Reload Model")
+        self.btn_reload.setFixedHeight(44)
+        self.btn_reload.setEnabled(False)
+        self.btn_reload.setStyleSheet(
+            "QPushButton { background:#5d4037; color:white; font-size:14px; font-weight:bold; border-radius:6px; }"
+            "QPushButton:hover { background:#795548; }"
+            "QPushButton:disabled { background:#333; color:#666; }"
+        )
+        self.btn_reload.clicked.connect(self._reload_model)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color:#333;")
+
+        # GPU / system info
+        gpu_title = QLabel("System Info")
+        gpu_title.setFont(QFont("Arial", 13, QFont.Bold))
+        gpu_title.setStyleSheet("color:#aaa; margin-top:10px;")
+
+        self.lbl_gpu = QLabel("Checking…")
+        self.lbl_gpu.setStyleSheet(
+            "background:#111; color:#0f0; font-family:monospace; font-size:12px; "
+            "padding:10px; border-radius:6px;"
+        )
+        self.lbl_gpu.setWordWrap(True)
+
+        layout.addWidget(title)
+        layout.addWidget(self.card)
+        layout.addSpacing(8)
+        layout.addWidget(self.btn_load)
+        layout.addWidget(self.btn_reload)
+        layout.addSpacing(10)
+        layout.addWidget(thresh_title)
+        layout.addWidget(self.thresh_panel)
+        layout.addSpacing(6)
+        layout.addWidget(sep)
+        layout.addWidget(gpu_title)
+        layout.addWidget(self.lbl_gpu)
+        layout.addStretch()
+        self.setLayout(layout)
+        self._populate_gpu_info()
+
+    # ── threshold panel ──────────────────────────────────
+
+    def _clear_thresh_panel(self):
+        while self.thresh_layout.count():
+            item = self.thresh_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _populate_thresh_panel(self, thresholds: list[dict]):
+        self._clear_thresh_panel()
+        if not thresholds:
+            lbl = QLabel("⚠  dynamic_threshold.pkl not found in model folder")
+            lbl.setStyleSheet("color:#f80; font-size:12px;")
+            self.thresh_layout.addWidget(lbl)
+            return
+        for entry in thresholds:
+            row = QFrame()
+            row.setStyleSheet("background:#1c1f2b; border-radius:5px; padding:4px 6px;")
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(4, 2, 4, 2)
+            row_layout.setSpacing(10)
+            lbl_name = QLabel(entry["label"])
+            lbl_name.setStyleSheet("color:#8ab4f8; font-size:12px; font-weight:bold;")
+            lbl_name.setMinimumWidth(130)
+            if entry.get("error"):
+                lbl_val = QLabel(f"❌  Read error: {entry['error']}")
+                lbl_val.setStyleSheet("color:#f55; font-size:12px;")
+                row_layout.addWidget(lbl_name)
+                row_layout.addWidget(lbl_val)
+            else:
+                lbl_raw = QLabel(f"Raw: {entry['raw']:.6f}")
+                lbl_raw.setStyleSheet(
+                    "background:#22263a; color:#ccc; font-family:monospace; "
+                    "font-size:12px; padding:2px 8px; border-radius:4px;"
+                )
+                lbl_eff = QLabel(f"Effective (×1.25): {entry['effective']:.6f}")
+                lbl_eff.setStyleSheet(
+                    "background:#1a3a2a; color:#5dbb7a; font-family:monospace; "
+                    "font-size:12px; font-weight:bold; padding:2px 8px; border-radius:4px;"
+                )
+                for w in (lbl_name, lbl_raw, lbl_eff):
+                    w.setToolTip(entry["path"])
+                row_layout.addWidget(lbl_name)
+                row_layout.addWidget(lbl_raw)
+                row_layout.addWidget(lbl_eff)
+            row_layout.addStretch()
+            self.thresh_layout.addWidget(row)
+
+    def _populate_gpu_info(self):
+        lines = [f"CUDA available : {torch.cuda.is_available()}"]
+        if torch.cuda.is_available():
+            lines.append(f"GPU            : {torch.cuda.get_device_name(0)}")
+            mem = torch.cuda.get_device_properties(0).total_memory / 1024 ** 3
+            lines.append(f"GPU memory     : {mem:.2f} GB")
+        lines.append(f"FAISS GPUs     : {faiss.get_num_gpus()}")
+        self.lbl_gpu.setText("\n".join(lines))
+
+    # ── model loading ────────────────────────────────────
+
+    def _load_model(self, path=None):
+        if not path:
+            path = QFileDialog.getExistingDirectory(self, "Select DIME Model Directory")
+        if not path:
+            return
+        self.lbl_model_status.setText("⏳ Loading…")
+        self.lbl_model_status.setStyleSheet("color:#ff0; font-size:14px; font-weight:bold;")
+        self.btn_load.setEnabled(False)
+        self._clear_thresh_panel()
+        QApplication.processEvents()
+        try:
+            t = time.perf_counter()
+            self.detector = dime_v2.create_detector(
+                model_path=path, skip_frames=3, threshold=80, proximity_on_gpu=False,
+                parallel_tiles=True, num_workers=1, tile_rows=1, tile_cols=1,
+                save_comparison_results=True, enable_visualization=False,
+            )
+            json_path = None
+            for root, dirs, files in os.walk(path):
+                if "roi_meta.json" in files:
+                    json_path = os.path.join(root, "roi_meta.json")
+                    break
+            if json_path is None:
+                raise FileNotFoundError("roi_meta.json not found")
+            self.roi_coords = self.get_roi_from_json(json_path)
+            ms = (time.perf_counter() - t) * 1000
+            thresholds = self._read_thresholds(path)
+            self._populate_thresh_panel(thresholds)
+            for entry in thresholds:
+                if entry.get("error"):
+                    print(f"⚠  Threshold [{entry['label']}]: read error — {entry['error']}")
+                else:
+                    print(f"🎯  Threshold [{entry['label']}]:  raw={entry['raw']:.6f}  →  effective={entry['effective']:.6f}")
+            self.lbl_model_path.setText(f"📁 {path}")
+            self.lbl_model_status.setText(f"✅ Model ready  ({ms:.0f} ms)")
+            self.lbl_model_status.setStyleSheet("color:#0f0; font-size:14px; font-weight:bold;")
+            self.btn_reload.setEnabled(True)
+            self.modelLoaded.emit(self.detector, self.roi_coords, thresholds)
+            print(f"✅ Model loaded in {ms:.2f} ms from: {path}")
+        except Exception as e:
+            self.lbl_model_status.setText(f"❌ Failed: {e}")
+            self.lbl_model_status.setStyleSheet("color:#f55; font-size:14px; font-weight:bold;")
+            self.btn_load.setEnabled(True)
+
+    def _reload_model(self):
+        if self.detector:
+            try:
+                self.detector.cleanup()
+            except Exception:
+                pass
+            self.detector = None
+        self.btn_load.setEnabled(True)
+        self.btn_reload.setEnabled(False)
+        self.lbl_model_status.setText("⏳ Waiting for model…")
+        self.lbl_model_status.setStyleSheet("color:#f80; font-size:14px; font-weight:bold;")
+        self.lbl_model_path.setText("No model loaded")
+        self._clear_thresh_panel()
+        lbl = QLabel("No threshold loaded yet")
+        lbl.setStyleSheet("color:#555; font-size:12px; font-style:italic;")
+        self.thresh_layout.addWidget(lbl)
+        self._load_model()

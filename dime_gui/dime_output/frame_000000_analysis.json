@@ -1,0 +1,33 @@
+{
+  "frame_index": 0,
+  "anomaly_score": 308.0148010253906,
+  "original_anomaly": true,
+  "final_anomaly": false,
+  "has_significant_changes": false,
+  "false_positives_filtered": 0,
+  "processing_time_seconds": 0.16275835037231445,
+  "timing_breakdown_ms": {
+    "anomaly_detection_ms": 162.7523899078369,
+    "visualization_ms": 0.0002384185791015625,
+    "total_processing_ms": 162.75835037231445
+  },
+  "change_analysis": {},
+  "anomaly_areas": [
+    {
+      "bbox": [
+        "512",
+        "826",
+        "25",
+        "26"
+      ],
+      "area": "508",
+      "confidence": 308.0148010253906,
+      "centroid": [
+        523,
+        839
+      ],
+      "roi_name": "anomaly_blister",
+      "aspect_ratio": 0.9615384615384616
+    }
+  ]
+}
