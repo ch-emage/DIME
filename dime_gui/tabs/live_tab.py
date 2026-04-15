@@ -4,9 +4,9 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QInputDialog, QMessageBox
+    QInputDialog, QMessageBox, QDoubleSpinBox
 )
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Slot, QLocale
 
 from config import LIVE_CONFIRM_FRAMES, LIVE_HOLD_FRAMES
 from inference import AnomalyDebouncer
@@ -38,6 +38,23 @@ class LiveTab(QWidget):
         for btn in (self.btn_rtsp, self.btn_oak, self.btn_pause, self.btn_continue):
             btn.setFixedHeight(38)
             ctrl.addWidget(btn)
+
+        ctrl.addSpacing(12)
+        ctrl.addWidget(QLabel("Threshold:"))
+        self.spin_threshold = QDoubleSpinBox()
+        self.spin_threshold.setLocale(QLocale(QLocale.C))
+        self.spin_threshold.setDecimals(2)
+        self.spin_threshold.setRange(0.0, 10000.0)
+        self.spin_threshold.setSingleStep(1.0)
+        self.spin_threshold.setValue(80.0)
+        self.spin_threshold.setFixedHeight(38)
+        ctrl.addWidget(self.spin_threshold)
+
+        self.btn_apply_thresh = QPushButton("Apply")
+        self.btn_apply_thresh.setFixedHeight(38)
+        self.btn_apply_thresh.clicked.connect(self._apply_threshold)
+        ctrl.addWidget(self.btn_apply_thresh)
+
         ctrl.addStretch()
 
         self.btn_oak.setStyleSheet(
@@ -75,6 +92,35 @@ class LiveTab(QWidget):
         if thresholds:
             self.stats.set_threshold(thresholds)
 
+    def _iter_anomaly_infers(self):
+        d = self.detector
+        if d is None:
+            return
+        engine = getattr(getattr(d, "detector", None), "engine", None) or getattr(d, "engine", None)
+        if engine is None:
+            return
+        mm = getattr(engine, "multi_mgr", None)
+        if mm is not None:
+            for det in mm.detectors:
+                yield det["infer"]
+        base = getattr(engine, "anomaly_infer", None)
+        if base is not None:
+            yield base
+
+    def _apply_threshold(self):
+        if not self._require_model():
+            return
+        value = float(self.spin_threshold.value())
+        count = 0
+        for infer in self._iter_anomaly_infers():
+            infer.threshold = value
+            count += 1
+        self.stats.set_threshold_value(value)
+        if count == 0:
+            print(f"⚠  Threshold set to {value:.4f}, but no detector objects were found to apply it to — check model structure")
+        else:
+            print(f"🎚  Threshold set to {value:.4f} on {count} detector(s)")
+
     # ── RTSP / webcam ────────────────────────────────────
 
     def _connect_rtsp(self):
@@ -101,7 +147,8 @@ class LiveTab(QWidget):
         self.stats.set_status("running")
         self._set_controls(running=True)
         self.video_worker = VideoInferenceThread(
-            self.detector, self.roi_coords, source, is_rtsp=is_rtsp
+            self.detector, self.roi_coords, source, is_rtsp=is_rtsp,
+            confirm_frames=LIVE_CONFIRM_FRAMES, hold_frames=LIVE_HOLD_FRAMES,
         )
         self.video_worker.frameProcessed.connect(self._on_frame)
         self.video_worker.finished.connect(self._on_stream_finished)
@@ -126,7 +173,8 @@ class LiveTab(QWidget):
         self.stats.set_status("running")
         self._set_controls(running=True)
         self.oak_worker = OAKInferenceThread(
-            self.detector, self.roi_coords, resolution=(1920, 1080)
+            self.detector, self.roi_coords, resolution=(1920, 1080),
+            confirm_frames=LIVE_CONFIRM_FRAMES, hold_frames=LIVE_HOLD_FRAMES,
         )
         self.oak_worker.frameProcessed.connect(self._on_frame)
         self.oak_worker.finished.connect(self._on_stream_finished)
@@ -154,10 +202,21 @@ class LiveTab(QWidget):
     def _stop_all(self):
         for attr in ("video_worker", "oak_worker"):
             w = getattr(self, attr)
-            if w:
-                w.stop()
-                w.wait()
-                setattr(self, attr, None)
+            if not w:
+                continue
+            # Disconnect before stop so a queued finished signal can't fire later
+            # against a freshly-started replacement worker.
+            for sig_name in ("frameProcessed", "finished", "connectionLost"):
+                sig = getattr(w, sig_name, None)
+                if sig is None:
+                    continue
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+            w.stop()
+            w.wait()
+            setattr(self, attr, None)
 
     def _set_controls(self, running=False, paused=False):
         self.btn_rtsp.setEnabled(not running and not paused)
@@ -176,10 +235,13 @@ class LiveTab(QWidget):
 
     @Slot()
     def _on_stream_finished(self):
-        if self.video_worker and not self.video_worker.isRunning():
-            self.video_worker = None
-        if self.oak_worker and not self.oak_worker.isRunning():
-            self.oak_worker = None
+        sender = self.sender()
+        # Ignore if this finished belongs to a worker we already replaced.
+        if sender is not None and sender is not self.video_worker and sender is not self.oak_worker:
+            return
+        for attr in ("video_worker", "oak_worker"):
+            if getattr(self, attr) is sender:
+                setattr(self, attr, None)
         if self._user_paused:
             self.stats.set_status("paused")
             self._set_controls(running=False, paused=True)

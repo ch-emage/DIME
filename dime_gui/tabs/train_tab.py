@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Slot
 
+from config import TRAINING_SCRIPT, FEATURE_WINDOW, WINDOW_STEP
 from threads import TrainingThread
 from widgets import FIELD_CSS, GROUP_CSS, BTN_NEUTRAL
 
@@ -132,23 +133,10 @@ class TrainModelSubTab(QWidget):
         layout.addWidget(widget, row, 1)
 
     def _build_paths_group(self) -> QGroupBox:
-        grp = QGroupBox("Paths & Script")
+        grp = QGroupBox("Paths")
         grp.setStyleSheet(GROUP_CSS)
         g = QGridLayout(grp)
         g.setColumnStretch(1, 1)
-
-        self.edit_script = QLineEdit()
-        self.edit_script.setPlaceholderText("Path to train.py …")
-        self.edit_script.setStyleSheet(FIELD_CSS)
-        btn_script = QPushButton("Browse")
-        btn_script.setStyleSheet(BTN_NEUTRAL)
-        btn_script.clicked.connect(self._browse_script)
-        rw = QHBoxLayout()
-        rw.addWidget(self.edit_script)
-        rw.addWidget(btn_script)
-        w = QWidget()
-        w.setLayout(rw)
-        self._row("Training script", w, g)
 
         self.edit_workspace = QLineEdit()
         self.edit_workspace.setPlaceholderText("Temp data staging folder …")
@@ -231,11 +219,6 @@ class TrainModelSubTab(QWidget):
 
     # ── browse helpers ───────────────────────────────────
 
-    def _browse_script(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select train.py", "", "Python files (*.py)")
-        if path:
-            self.edit_script.setText(path)
-
     def _browse_workspace(self):
         path = QFileDialog.getExistingDirectory(self, "Select Workspace / Data Staging Folder")
         if path:
@@ -278,10 +261,10 @@ class TrainModelSubTab(QWidget):
     # ── validation & staging ─────────────────────────────
 
     def _validate(self) -> tuple[bool, str]:
-        if not self.edit_script.text().strip():
-            return False, "Please select the training script (train.py)."
-        if not os.path.isfile(self.edit_script.text().strip()):
-            return False, f"Training script not found:\n{self.edit_script.text()}"
+        if not TRAINING_SCRIPT:
+            return False, "Training script not configured.\nSet TRAINING_SCRIPT in config.py."
+        if not os.path.isfile(TRAINING_SCRIPT):
+            return False, f"Training script not found:\n{TRAINING_SCRIPT}"
         if not self.edit_workspace.text().strip():
             return False, "Please set a workspace folder."
         if not self.edit_results.text().strip():
@@ -317,6 +300,8 @@ class TrainModelSubTab(QWidget):
             "--subdatasets",  subdataset,
             "--log_project",  self.edit_project.text().strip() or "CAMERA",
             "--log_group",    self.edit_group.text().strip() or "SLC",
+            "--feature-window", str(FEATURE_WINDOW),
+            "--window-step",    str(WINDOW_STEP),
             "--video-to-frames", "--save-model",
         ]
 
@@ -343,7 +328,7 @@ class TrainModelSubTab(QWidget):
         self.btn_stop.setEnabled(True)
         self.progress_bar.setVisible(True)
         self.lbl_progress.setText("⏳  Training in progress…")
-        self._worker = TrainingThread(self.edit_script.text().strip(), self._build_args(workspace, subdataset))
+        self._worker = TrainingThread(TRAINING_SCRIPT, self._build_args(workspace, subdataset))
         self._worker.logLine.connect(self._log)
         self._worker.progressHint.connect(self.lbl_progress.setText)
         self._worker.finished.connect(self._on_training_finished)

@@ -52,6 +52,10 @@ class StatsBar(QWidget):
         self._threshold = effective
         self.lbl_threshold.setText(f"Threshold: {effective:.4f}" if effective else "Threshold: N/A")
 
+    def set_threshold_value(self, value: float):
+        self._threshold = value
+        self.lbl_threshold.setText(f"Threshold: {value:.4f}")
+
     def update_stats(self, latency_ms, score: float = None):
         self._total_frames += 1
         self._frame_times.append(time.time())

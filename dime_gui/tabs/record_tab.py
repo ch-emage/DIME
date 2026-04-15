@@ -14,7 +14,7 @@ import cv2
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QDialog, QDialogButtonBox, QFileDialog, QMessageBox,
-    QRadioButton, QLineEdit, QApplication
+    QRadioButton, QLineEdit
 )
 from PySide6.QtCore import Qt, Slot
 
@@ -189,14 +189,16 @@ class RecordSubTab(QWidget):
         self.lbl_cam.setText("● Camera: Connecting…")
         self.lbl_cam.setStyleSheet("color:#ff0; font-weight:bold; font-size:13px;")
         self.btn_connect.setEnabled(False)
-        QApplication.processEvents()
 
         self._capture = OAKCaptureThread(resolution=(1920, 1080))
+        self._capture.connectionReady.connect(self._on_connected)
         self._capture.frameReady.connect(self._on_frame)
         self._capture.finished.connect(self._on_finished)
         self._capture.connectionLost.connect(self._on_lost)
         self._capture.start()
 
+    @Slot()
+    def _on_connected(self):
         self.btn_disconnect.setEnabled(True)
         self.btn_record.setEnabled(True)
         self.lbl_cam.setText("● Camera: Connected")
@@ -229,11 +231,16 @@ class RecordSubTab(QWidget):
         timestamp      = time.strftime("%Y%m%d_%H%M%S")
         self._rec_path = os.path.join(tempfile.gettempdir(), f"recording_{timestamp}.mov")
         fourcc         = cv2.VideoWriter_fourcc(*"mp4v")
-        self._writer   = cv2.VideoWriter(self._rec_path, fourcc, 30, (1920, 1080))
-        if not self._writer.isOpened():
-            QMessageBox.warning(self, "Recording Error", "Could not open VideoWriter. Check disk space.")
+        writer         = cv2.VideoWriter(self._rec_path, fourcc, 30, (1920, 1080))
+        if not writer.isOpened():
+            try:
+                writer.release()
+            except Exception:
+                pass
             self._writer = None
+            QMessageBox.warning(self, "Recording Error", "Could not open VideoWriter. Check disk space.")
             return
+        self._writer   = writer
         self._recording   = True
         self._frame_count = 0
         self._start_time  = time.time()

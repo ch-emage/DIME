@@ -28,15 +28,22 @@ class TrainingThread(QThread):
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, bufsize=1,
             )
-            for line in self._proc.stdout:
-                if self._abort:
-                    break
-                self.logLine.emit(line.rstrip())
-                low = line.lower()
-                if "training model"  in low: self.progressHint.emit("Training backbone…")
-                elif "validation"    in low: self.progressHint.emit("Running validation…")
-                elif "saving" in low or "save" in low: self.progressHint.emit("Saving model…")
-                elif "dynamic threshold" in low: self.progressHint.emit("Computing threshold…")
+            try:
+                for line in self._proc.stdout:
+                    if self._abort:
+                        break
+                    self.logLine.emit(line.rstrip())
+                    low = line.lower()
+                    if "training model"  in low: self.progressHint.emit("Training backbone…")
+                    elif "validation"    in low: self.progressHint.emit("Running validation…")
+                    elif "saving" in low or "save" in low: self.progressHint.emit("Saving model…")
+                    elif "dynamic threshold" in low: self.progressHint.emit("Computing threshold…")
+            finally:
+                if self._proc.stdout:
+                    try:
+                        self._proc.stdout.close()
+                    except Exception:
+                        pass
 
             self._proc.wait()
             if self._abort:
@@ -47,6 +54,8 @@ class TrainingThread(QThread):
                 self.finished.emit(False, f"Training exited with code {self._proc.returncode} ❌")
         except Exception as e:
             self.finished.emit(False, f"Error: {e}")
+        finally:
+            self._proc = None
 
     def abort(self):
         self._abort = True

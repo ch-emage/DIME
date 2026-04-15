@@ -3,9 +3,10 @@
 # =========================================================
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QMessageBox
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QMessageBox,
+    QLabel, QDoubleSpinBox
 )
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Slot, QLocale
 
 from config import VIDEO_CONFIRM_FRAMES, VIDEO_HOLD_FRAMES
 from inference import AnomalyDebouncer
@@ -38,6 +39,23 @@ class MediaTab(QWidget):
                     self.btn_pause, self.btn_continue):
             btn.setFixedHeight(38)
             ctrl.addWidget(btn)
+
+        ctrl.addSpacing(12)
+        ctrl.addWidget(QLabel("Threshold:"))
+        self.spin_threshold = QDoubleSpinBox()
+        self.spin_threshold.setLocale(QLocale(QLocale.C))
+        self.spin_threshold.setDecimals(2)
+        self.spin_threshold.setRange(0.0, 10000.0)
+        self.spin_threshold.setSingleStep(1.0)
+        self.spin_threshold.setValue(80.0)
+        self.spin_threshold.setFixedHeight(38)
+        ctrl.addWidget(self.spin_threshold)
+
+        self.btn_apply_thresh = QPushButton("Apply")
+        self.btn_apply_thresh.setFixedHeight(38)
+        self.btn_apply_thresh.clicked.connect(self._apply_threshold)
+        ctrl.addWidget(self.btn_apply_thresh)
+
         ctrl.addStretch()
 
         self.btn_run_img.setEnabled(False)
@@ -69,6 +87,36 @@ class MediaTab(QWidget):
         self.btn_load_video.setEnabled(True)
         if thresholds:
             self.stats.set_threshold(thresholds)
+
+    def _iter_anomaly_infers(self):
+        d = self.detector
+        if d is None:
+            return
+        engine = getattr(getattr(d, "detector", None), "engine", None) or getattr(d, "engine", None)
+        if engine is None:
+            return
+        mm = getattr(engine, "multi_mgr", None)
+        if mm is not None:
+            for det in mm.detectors:
+                yield det["infer"]
+        base = getattr(engine, "anomaly_infer", None)
+        if base is not None:
+            yield base
+
+    def _apply_threshold(self):
+        if not self.detector:
+            QMessageBox.warning(self, "Error", "Load a model first (Tab 1 — Model Setup)")
+            return
+        value = float(self.spin_threshold.value())
+        count = 0
+        for infer in self._iter_anomaly_infers():
+            infer.threshold = value
+            count += 1
+        self.stats.set_threshold_value(value)
+        if count == 0:
+            print(f"⚠  Threshold set to {value:.4f}, but no detector objects were found to apply it to — check model structure")
+        else:
+            print(f"🎚  Threshold set to {value:.4f} on {count} detector(s)")
 
     # ── image ─────────────────────────────────────────────
 
@@ -114,6 +162,16 @@ class MediaTab(QWidget):
         )
         if not path:
             return
+        # Disconnect old signals before stop so late-firing slots don't touch new state
+        if self.video_worker:
+            try:
+                self.video_worker.frameProcessed.disconnect(self._on_frame)
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                self.video_worker.finished.disconnect(self._on_video_finished)
+            except (RuntimeError, TypeError):
+                pass
         self._stop_video()
         self.stats.reset()
         set_anomaly_label(self.alert_label, False)
@@ -128,7 +186,9 @@ class MediaTab(QWidget):
         self.btn_pause.setEnabled(True)
         self.btn_continue.setEnabled(False)
         self.video_worker = VideoInferenceThread(
-            self.detector, self.roi_coords, path, is_rtsp=False, start_frame=start_frame
+            self.detector, self.roi_coords, path, is_rtsp=False,
+            start_frame=start_frame,
+            confirm_frames=VIDEO_CONFIRM_FRAMES, hold_frames=VIDEO_HOLD_FRAMES,
         )
         self.video_worker.frameProcessed.connect(self._on_frame)
         self.video_worker.finished.connect(self._on_video_finished)
@@ -176,3 +236,7 @@ class MediaTab(QWidget):
 
     def cleanup(self):
         self._stop_video()
+        if self.image_worker is not None:
+            if self.image_worker.isRunning():
+                self.image_worker.wait(5000)
+            self.image_worker = None

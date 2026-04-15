@@ -19,6 +19,9 @@ dime_output/
 anomaly_clips/
 full_videos/
 
+# Local scratch / drafts
+draft/
+
 # IDE / editor
 .vscode/
 .idea/

@@ -599,7 +599,7 @@ class AnomalyInference:
             if os.path.exists(threshold_file):
                 with open(threshold_file, "rb") as f:
                     self.threshold = pickle.load(f) * 1.25
-                    self.threshold = 170
+                    # self.threshold = 170
                 logger.info(f"Loaded dynamic threshold: {self.threshold:.4f}")
             else:
                 self.threshold = 0.5

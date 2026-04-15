@@ -3,6 +3,7 @@
 # =========================================================
 
 import sys
+import os
 import multiprocessing as mp
 
 try:
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QLabel, QSplitter, QTabWidget
 )
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QIcon
 
 from widgets import EmittingStream
 from tabs import ModelTab, MediaTab, LiveTab, RecordSubTab, TrainModelSubTab
@@ -24,6 +26,8 @@ class DIMEMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DIME Inference & Training GUI")
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Icon.png")
+        self.setWindowIcon(QIcon(icon_path))
         self.resize(1400, 860)
         self.setStyleSheet("background:#1e1e1e; color:#eee;")
         self._build_ui()
@@ -52,6 +56,7 @@ class DIMEMainWindow(QMainWindow):
         self.logs.setReadOnly(True)
         self.logs.setMinimumHeight(80)
         self.logs.setStyleSheet("background:#111; color:#0f0; font-family:monospace; font-size:12px;")
+        self.logs.document().setMaximumBlockCount(5000)
 
         self.tabs.addTab(self.tab_record, "📹  Record Video")
         self.tabs.addTab(self.tab_model,  "⚙  Model Setup")
@@ -86,6 +91,8 @@ class DIMEMainWindow(QMainWindow):
         self.setCentralWidget(root)
 
     def _redirect_stdout(self):
+        self._orig_stdout = sys.stdout
+        self._orig_stderr = sys.stderr
         self._stdout = EmittingStream()
         self._stderr = EmittingStream()
         self._stdout.textWritten.connect(self._append_log)
@@ -100,23 +107,35 @@ class DIMEMainWindow(QMainWindow):
 
     @Slot(object, object, object)
     def _on_model_loaded(self, detector, roi_coords, thresholds):
-        self.tabs.setCurrentIndex(2)   # jump to Image & Video
+        self.tabs.setCurrentWidget(self.tab_media)
 
     def closeEvent(self, event):
-        self.tab_record.cleanup()
-        self.tab_media.cleanup()
-        self.tab_live.cleanup()
-        self.tab_train.cleanup()
+        sys.stdout = self._orig_stdout
+        sys.stderr = self._orig_stderr
+        for tab, name in (
+            (self.tab_record, "Record"),
+            (self.tab_media,  "Media"),
+            (self.tab_live,   "Live"),
+            (self.tab_train,  "Train"),
+        ):
+            try:
+                tab.cleanup()
+            except Exception as e:
+                print(f"⚠  Error cleaning up {name} tab: {e}")
         if self.tab_model.detector:
             try:
                 self.tab_model.detector.cleanup()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠  Error cleaning up detector: {e}")
+            finally:
+                self.tab_model.detector = None
         event.accept()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Icon.png")
+    app.setWindowIcon(QIcon(icon_path))
     win = DIMEMainWindow()
     win.showMaximized()
     sys.exit(app.exec())

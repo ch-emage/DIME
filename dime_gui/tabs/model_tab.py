@@ -6,18 +6,18 @@ import os
 import glob
 import json
 import pickle
-import time
 
 import torch
 import faiss
-import dime_v2
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QFileDialog, QApplication
+    QFrame, QFileDialog
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QFont
+
+from threads import ModelLoadThread
 
 
 class ModelTab(QWidget):
@@ -25,8 +25,11 @@ class ModelTab(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.detector   = None
-        self.roi_coords = None
+        self.detector     = None
+        self.roi_coords   = None
+        self._load_worker = None
+        self._model_path  = None
+        self._load_token  = 0   # bumped on each load; stale workers are ignored
         self._build_ui()
 
     # ── threshold helpers ────────────────────────────────
@@ -217,23 +220,54 @@ class ModelTab(QWidget):
 
     # ── model loading ────────────────────────────────────
 
-    def _load_model(self, path=None):
+    MODEL_LOAD_TIMEOUT_MS = 120_000  # 2 minutes
+
+    def _load_model(self, checked=False, path=None):
         if not path:
             path = QFileDialog.getExistingDirectory(self, "Select DIME Model Directory")
         if not path:
             return
+        self._model_path = path
+        self._load_token += 1
+        token = self._load_token
         self.lbl_model_status.setText("⏳ Loading…")
         self.lbl_model_status.setStyleSheet("color:#ff0; font-size:14px; font-weight:bold;")
         self.btn_load.setEnabled(False)
+        self.btn_reload.setEnabled(False)
         self._clear_thresh_panel()
-        QApplication.processEvents()
-        try:
-            t = time.perf_counter()
-            self.detector = dime_v2.create_detector(
-                model_path=path, skip_frames=3, threshold=80, proximity_on_gpu=False,
-                parallel_tiles=True, num_workers=1, tile_rows=1, tile_cols=1,
-                save_comparison_results=True, enable_visualization=False,
+
+        worker = ModelLoadThread(path)
+        self._load_worker = worker
+        worker.loaded.connect(lambda d, ms, t=token: self._on_model_loaded(t, d, ms))
+        worker.failed.connect(lambda err, t=token: self._on_model_failed(err, t))
+        worker.start()
+        QTimer.singleShot(self.MODEL_LOAD_TIMEOUT_MS, lambda t=token: self._check_load_timeout(t))
+
+    def _check_load_timeout(self, token):
+        # Only act if this token is still the active one and the worker hasn't completed.
+        if token != self._load_token:
+            return
+        w = self._load_worker
+        if w is not None and w.isRunning():
+            print(f"⚠  Model load exceeded {self.MODEL_LOAD_TIMEOUT_MS // 1000}s — reporting timeout")
+            # Invalidate the in-flight worker so its eventual loaded/failed signal is ignored.
+            self._load_token += 1
+            self._load_worker = None
+            self._set_failed_ui(
+                f"Model loading timed out after {self.MODEL_LOAD_TIMEOUT_MS // 1000} seconds"
             )
+
+    def _on_model_loaded(self, token, detector, elapsed_ms):
+        if token != self._load_token:
+            # Stale result from a load we already gave up on.
+            try:
+                detector.cleanup()
+            except Exception:
+                pass
+            return
+        self._load_worker = None
+        path = self._model_path
+        try:
             json_path = None
             for root, dirs, files in os.walk(path):
                 if "roi_meta.json" in files:
@@ -241,8 +275,8 @@ class ModelTab(QWidget):
                     break
             if json_path is None:
                 raise FileNotFoundError("roi_meta.json not found")
+            self.detector   = detector
             self.roi_coords = self.get_roi_from_json(json_path)
-            ms = (time.perf_counter() - t) * 1000
             thresholds = self._read_thresholds(path)
             self._populate_thresh_panel(thresholds)
             for entry in thresholds:
@@ -251,25 +285,37 @@ class ModelTab(QWidget):
                 else:
                     print(f"🎯  Threshold [{entry['label']}]:  raw={entry['raw']:.6f}  →  effective={entry['effective']:.6f}")
             self.lbl_model_path.setText(f"📁 {path}")
-            self.lbl_model_status.setText(f"✅ Model ready  ({ms:.0f} ms)")
+            self.lbl_model_status.setText(f"✅ Model ready  ({elapsed_ms:.0f} ms)")
             self.lbl_model_status.setStyleSheet("color:#0f0; font-size:14px; font-weight:bold;")
             self.btn_reload.setEnabled(True)
             self.modelLoaded.emit(self.detector, self.roi_coords, thresholds)
-            print(f"✅ Model loaded in {ms:.2f} ms from: {path}")
+            print(f"✅ Model loaded in {elapsed_ms:.2f} ms from: {path}")
         except Exception as e:
-            self.lbl_model_status.setText(f"❌ Failed: {e}")
-            self.lbl_model_status.setStyleSheet("color:#f55; font-size:14px; font-weight:bold;")
-            self.btn_load.setEnabled(True)
+            self._set_failed_ui(str(e))
+
+    def _on_model_failed(self, error: str, token=None):
+        if token is not None and token != self._load_token:
+            return
+        self._load_worker = None
+        self._set_failed_ui(error)
+
+    def _set_failed_ui(self, error: str):
+        self.lbl_model_status.setText(f"❌ Failed: {error}")
+        self.lbl_model_status.setStyleSheet("color:#f55; font-size:14px; font-weight:bold;")
+        self.btn_load.setEnabled(True)
+        self.btn_reload.setEnabled(self.detector is not None)
 
     def _reload_model(self):
+        prev_path = self._model_path
+        if not prev_path:
+            self._load_model()
+            return
         if self.detector:
             try:
                 self.detector.cleanup()
             except Exception:
                 pass
             self.detector = None
-        self.btn_load.setEnabled(True)
-        self.btn_reload.setEnabled(False)
         self.lbl_model_status.setText("⏳ Waiting for model…")
         self.lbl_model_status.setStyleSheet("color:#f80; font-size:14px; font-weight:bold;")
         self.lbl_model_path.setText("No model loaded")
@@ -277,4 +323,4 @@ class ModelTab(QWidget):
         lbl = QLabel("No threshold loaded yet")
         lbl.setStyleSheet("color:#555; font-size:12px; font-style:italic;")
         self.thresh_layout.addWidget(lbl)
-        self._load_model()
+        self._load_model(path=prev_path)
