@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Packaging / archives
+*.zip
+*.tar
+*.tar.gz
+
+# DIME runtime outputs
+dime_output/
+anomaly_clips/
+full_videos/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
