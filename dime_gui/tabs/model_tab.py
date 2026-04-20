@@ -119,7 +119,7 @@ class ModelTab(QWidget):
         )
         self.btn_load.clicked.connect(self._load_model)
 
-        self.btn_reload = QPushButton("🔄  Reload Model")
+        self.btn_reload = QPushButton("🔄  Change Model")
         self.btn_reload.setFixedHeight(44)
         self.btn_reload.setEnabled(False)
         self.btn_reload.setStyleSheet(
@@ -127,7 +127,7 @@ class ModelTab(QWidget):
             "QPushButton:hover { background:#795548; }"
             "QPushButton:disabled { background:#333; color:#666; }"
         )
-        self.btn_reload.clicked.connect(self._reload_model)
+        self.btn_reload.clicked.connect(self._change_model)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
@@ -305,11 +305,7 @@ class ModelTab(QWidget):
         self.btn_load.setEnabled(True)
         self.btn_reload.setEnabled(self.detector is not None)
 
-    def _reload_model(self):
-        prev_path = self._model_path
-        if not prev_path:
-            self._load_model()
-            return
+    def _change_model(self):
         if self.detector:
             try:
                 self.detector.cleanup()
@@ -323,4 +319,4 @@ class ModelTab(QWidget):
         lbl = QLabel("No threshold loaded yet")
         lbl.setStyleSheet("color:#555; font-size:12px; font-style:italic;")
         self.thresh_layout.addWidget(lbl)
-        self._load_model(path=prev_path)
+        self._load_model()
