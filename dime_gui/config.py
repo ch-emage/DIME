@@ -27,7 +27,7 @@ CLIP_SECONDS_AFTER   = 3             # seconds of footage to keep after anomaly 
 CLIP_OUTPUT_DIR      = "anomaly_clips"
 
 # ── full-session video recording ────────────────────────
-FULL_VIDEO_ENABLED        = False         # set True to save the entire inference session
+FULL_VIDEO_ENABLED        = True         # set True to save the entire inference session
 FULL_VIDEO_SAVE_RAW       = True          # save the unannotated feed
 FULL_VIDEO_SAVE_PROCESSED = True          # save the annotated feed (with boxes/labels)
 FULL_VIDEO_OUTPUT_DIR     = "full_videos"

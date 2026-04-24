@@ -12,11 +12,11 @@ except RuntimeError:
     pass
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QTextEdit, QLabel, QSplitter, QTabWidget
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QTextEdit, QLabel, QPushButton, QSplitter, QTabWidget
 )
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 
 from widgets import EmittingStream
 from tabs import ModelTab, MediaTab, LiveTab, RecordSubTab, TrainModelSubTab
@@ -69,26 +69,56 @@ class DIMEMainWindow(QMainWindow):
         self.tab_model.modelLoaded.connect(self.tab_live.set_detector)
         self.tab_model.modelLoaded.connect(self._on_model_loaded)
 
-        log_box = QWidget()
-        log_layout = QVBoxLayout(log_box)
+        log_header = QWidget()
+        log_header_layout = QHBoxLayout(log_header)
+        log_header_layout.setContentsMargins(0, 0, 0, 0)
+        log_header_layout.addWidget(QLabel("📋 Log"))
+        log_header_layout.addStretch()
+        self.btn_log_toggle = QPushButton("▼ Hide")
+        self.btn_log_toggle.setFixedHeight(22)
+        self.btn_log_toggle.setCursor(Qt.PointingHandCursor)
+        self.btn_log_toggle.setToolTip("Toggle log panel (Ctrl+L)")
+        self.btn_log_toggle.setStyleSheet(
+            "QPushButton { background:#2a2a2a; color:#aaa; border:1px solid #333; "
+            "border-radius:4px; padding:2px 10px; font-size:11px; }"
+            "QPushButton:hover { background:#333; color:#fff; }"
+        )
+        self.btn_log_toggle.clicked.connect(self._toggle_log)
+        log_header_layout.addWidget(self.btn_log_toggle)
+
+        self._log_box = QWidget()
+        log_layout = QVBoxLayout(self._log_box)
         log_layout.setContentsMargins(0, 0, 0, 0)
         log_layout.setSpacing(2)
-        log_layout.addWidget(QLabel("📋 Log"))
+        log_layout.addWidget(log_header)
         log_layout.addWidget(self.logs)
 
-        splitter = QSplitter(Qt.Vertical)
-        splitter.addWidget(self.tabs)
-        splitter.addWidget(log_box)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
-        splitter.setSizes([800, 140])
-        splitter.setChildrenCollapsible(False)
+        self.splitter = QSplitter(Qt.Vertical)
+        self.splitter.addWidget(self.tabs)
+        self.splitter.addWidget(self._log_box)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 0)
+        self.splitter.setSizes([800, 140])
+        self.splitter.setChildrenCollapsible(False)
+        self._log_sizes = self.splitter.sizes()
+
+        QShortcut(QKeySequence("Ctrl+L"), self, activated=self._toggle_log)
 
         root = QWidget()
         layout = QVBoxLayout(root)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.addWidget(splitter)
+        layout.addWidget(self.splitter)
         self.setCentralWidget(root)
+
+    def _toggle_log(self):
+        if self.logs.isVisible():
+            self._log_sizes = self.splitter.sizes()
+            self.logs.hide()
+            self.btn_log_toggle.setText("▲ Show")
+        else:
+            self.logs.show()
+            self.btn_log_toggle.setText("▼ Hide")
+            self.splitter.setSizes(self._log_sizes)
 
     def _redirect_stdout(self):
         self._orig_stdout = sys.stdout
