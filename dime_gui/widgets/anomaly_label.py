@@ -5,13 +5,20 @@
 from PySide6.QtWidgets import QLabel
 from PySide6.QtCore import Qt
 
-_STYLE_NORMAL  = (
-    "background:#1e8449; color:white; font-size:16px; font-weight:bold; "
-    "border-radius:5px; padding:4px 16px; letter-spacing:1px;"
+from widgets.theme import FS_SUBTITLE
+
+
+_STYLE_NORMAL = (
+    "QLabel { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+    "stop:0 #1e8449, stop:1 #23a55a); "
+    f"color:white; font-size:{FS_SUBTITLE + 2}px; font-weight:700; "
+    "border-radius:6px; padding:4px 16px; letter-spacing:1px; }"
 )
 _STYLE_ANOMALY = (
-    "background:#c0392b; color:white; font-size:16px; font-weight:bold; "
-    "border-radius:5px; padding:4px 16px; letter-spacing:1px;"
+    "QLabel { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+    "stop:0 #a93226, stop:1 #cf3b2b); "
+    f"color:white; font-size:{FS_SUBTITLE + 2}px; font-weight:700; "
+    "border-radius:6px; padding:4px 16px; letter-spacing:1px; }"
 )
 
 

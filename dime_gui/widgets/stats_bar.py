@@ -7,14 +7,28 @@ from collections import deque
 
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
 
+from widgets.theme import (
+    COLOR_SURFACE, COLOR_BORDER, COLOR_TEXT,
+    COLOR_PRIMARY, COLOR_SUCCESS, COLOR_WARN, COLOR_DANGER,
+    FS_LABEL,
+)
+
+
+def _chip_css(color: str) -> str:
+    return (
+        f"QLabel {{ background:{COLOR_SURFACE}; color:{color}; "
+        f"border:1px solid {COLOR_BORDER}; border-radius:4px; "
+        f"padding:5px 10px; font-weight:600; font-size:{FS_LABEL}px; }}"
+    )
+
 
 class StatsBar(QWidget):
     def __init__(self):
         super().__init__()
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        css = "background:#222; padding:6px 10px; font-weight:bold; font-size:13px; border-radius:4px;"
+        layout.setSpacing(6)
+
         self.lbl_latency     = QLabel("Latency: -- ms")
         self.lbl_instant_fps = QLabel("Instant: -- FPS")
         self.lbl_avg_fps     = QLabel("Avg: -- FPS")
@@ -22,21 +36,26 @@ class StatsBar(QWidget):
         self.lbl_status      = QLabel("⏹ Idle")
         self.lbl_score       = QLabel("Score: --")
         self.lbl_threshold   = QLabel("Threshold: --")
-        self.lbl_latency.setStyleSheet(css + "color:#ff0;")
-        self.lbl_instant_fps.setStyleSheet(css + "color:#0ff;")
-        self.lbl_avg_fps.setStyleSheet(css + "color:#0f0;")
-        self.lbl_frames.setStyleSheet(css + "color:#fff;")
-        self.lbl_status.setStyleSheet(css + "color:#f55;")
-        self.lbl_score.setStyleSheet(css + "color:#fff;")
-        self.lbl_threshold.setStyleSheet(css + "color:#fa0;")
+
+        self.lbl_latency.setStyleSheet(_chip_css(COLOR_WARN))
+        self.lbl_instant_fps.setStyleSheet(_chip_css(COLOR_PRIMARY))
+        self.lbl_avg_fps.setStyleSheet(_chip_css(COLOR_SUCCESS))
+        self.lbl_frames.setStyleSheet(_chip_css(COLOR_TEXT))
+        self.lbl_status.setStyleSheet(_chip_css(COLOR_DANGER))
+        self.lbl_score.setStyleSheet(_chip_css(COLOR_TEXT))
+        self.lbl_threshold.setStyleSheet(_chip_css(COLOR_WARN))
+
         for lbl in (self.lbl_latency, self.lbl_instant_fps, self.lbl_avg_fps,
                     self.lbl_frames, self.lbl_status, self.lbl_score, self.lbl_threshold):
             layout.addWidget(lbl)
         layout.addStretch()
         self.setLayout(layout)
+
         self._frame_times  = deque(maxlen=30)
         self._total_frames = 0
         self._threshold    = None
+
+    # ── threshold ────────────────────────────────────────
 
     def set_threshold(self, thresholds: list[dict]):
         effective = None
@@ -50,11 +69,15 @@ class StatsBar(QWidget):
                     effective = e["effective"]
                     break
         self._threshold = effective
-        self.lbl_threshold.setText(f"Threshold: {effective:.4f}" if effective else "Threshold: N/A")
+        self.lbl_threshold.setText(
+            f"Threshold: {effective:.4f}" if effective else "Threshold: N/A"
+        )
 
     def set_threshold_value(self, value: float):
         self._threshold = value
         self.lbl_threshold.setText(f"Threshold: {value:.4f}")
+
+    # ── per-frame stats ──────────────────────────────────
 
     def update_stats(self, latency_ms, score: float = None):
         self._total_frames += 1
@@ -70,12 +93,9 @@ class StatsBar(QWidget):
         self.lbl_frames.setText(f"Frames: {self._total_frames}")
         if score is not None:
             is_anom = (self._threshold is not None and score >= self._threshold)
-            color = "#f55" if is_anom else "#5dbb7a"
+            color = COLOR_DANGER if is_anom else COLOR_SUCCESS
             self.lbl_score.setText(f"Score: {score:.4f}")
-            self.lbl_score.setStyleSheet(
-                f"background:#222; padding:6px 10px; font-weight:bold; "
-                f"font-size:13px; border-radius:4px; color:{color};"
-            )
+            self.lbl_score.setStyleSheet(_chip_css(color))
 
     def reset(self):
         self._frame_times.clear()
@@ -85,20 +105,16 @@ class StatsBar(QWidget):
         self.lbl_avg_fps.setText("Avg: -- FPS")
         self.lbl_frames.setText("Frames: 0")
         self.lbl_score.setText("Score: --")
-        self.lbl_score.setStyleSheet(
-            "background:#222; padding:6px 10px; font-weight:bold; font-size:13px; "
-            "border-radius:4px; color:#fff;"
-        )
+        self.lbl_score.setStyleSheet(_chip_css(COLOR_TEXT))
+
+    # ── status ──────────────────────────────────────────
 
     def set_status(self, state: str):
         label, color = {
-            "running": ("▶ Running", "#0f0"),
-            "paused":  ("⏸ Paused",  "#ff0"),
-            "stopped": ("⏹ Stopped", "#f55"),
-            "idle":    ("⏹ Idle",    "#f55"),
+            "running": ("▶ Running", COLOR_SUCCESS),
+            "paused":  ("⏸ Paused",  COLOR_WARN),
+            "stopped": ("⏹ Stopped", COLOR_DANGER),
+            "idle":    ("⏹ Idle",    COLOR_DANGER),
         }[state]
         self.lbl_status.setText(label)
-        self.lbl_status.setStyleSheet(
-            f"background:#222; color:{color}; padding:6px 10px; font-weight:bold; "
-            f"font-size:13px; border-radius:4px;"
-        )
+        self.lbl_status.setStyleSheet(_chip_css(color))

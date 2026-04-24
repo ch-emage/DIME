@@ -15,9 +15,15 @@ from PySide6.QtWidgets import (
     QFrame, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, Slot, QTimer
-from PySide6.QtGui import QFont
 
 from threads import ModelLoadThread
+from widgets import (
+    BTN_ACCENT, BTN_NEUTRAL,
+    COLOR_SURFACE, COLOR_SURFACE_HI, COLOR_BORDER,
+    COLOR_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
+    COLOR_PRIMARY, COLOR_SUCCESS, COLOR_WARN, COLOR_DANGER,
+    FS_LABEL, FS_BODY, FS_SUBTITLE, FS_TITLE,
+)
 
 
 class ModelTab(QWidget):
@@ -76,84 +82,100 @@ class ModelTab(QWidget):
     def _build_ui(self):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignTop)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
         title = QLabel("Model Setup")
-        title.setFont(QFont("Arial", 16, QFont.Bold))
-        title.setStyleSheet("color:#fff; margin-bottom:10px;")
+        title.setStyleSheet(
+            f"color:{COLOR_TEXT}; font-size:{FS_TITLE}px; font-weight:600; "
+            f"margin-bottom:6px; background:transparent;"
+        )
 
         # Status card
         self.card = QFrame()
-        self.card.setStyleSheet("background:#1a1a1a; border-radius:8px; padding:10px;")
+        self.card.setStyleSheet(
+            f"QFrame {{ background:{COLOR_SURFACE}; "
+            f"border:1px solid {COLOR_BORDER}; border-radius:8px; }}"
+        )
         card_layout = QVBoxLayout()
-        card_layout.setSpacing(4)
+        card_layout.setContentsMargins(14, 12, 14, 12)
+        card_layout.setSpacing(6)
         self.lbl_model_path   = QLabel("No model loaded")
-        self.lbl_model_path.setStyleSheet("color:#888; font-size:13px;")
+        self.lbl_model_path.setStyleSheet(
+            f"color:{COLOR_TEXT_DIM}; font-size:{FS_BODY}px; background:transparent;"
+        )
         self.lbl_model_status = QLabel("⏳ Waiting for model…")
-        self.lbl_model_status.setStyleSheet("color:#f80; font-size:14px; font-weight:bold;")
+        self.lbl_model_status.setStyleSheet(
+            f"color:{COLOR_WARN}; font-size:{FS_SUBTITLE}px; "
+            f"font-weight:600; background:transparent;"
+        )
         card_layout.addWidget(self.lbl_model_path)
         card_layout.addWidget(self.lbl_model_status)
         self.card.setLayout(card_layout)
 
         # Threshold panel
         thresh_title = QLabel("Detection Threshold")
-        thresh_title.setFont(QFont("Arial", 13, QFont.Bold))
-        thresh_title.setStyleSheet("color:#aaa; margin-top:4px;")
+        thresh_title.setStyleSheet(
+            f"color:{COLOR_TEXT_MUTED}; font-size:{FS_BODY}px; "
+            f"font-weight:600; background:transparent;"
+        )
 
         self.thresh_panel = QFrame()
         self.thresh_panel.setStyleSheet(
-            "background:#12141a; border:1px solid #2a2d3a; border-radius:8px; padding:8px;"
+            f"QFrame {{ background:{COLOR_SURFACE}; "
+            f"border:1px solid {COLOR_BORDER}; border-radius:8px; }}"
         )
         self.thresh_layout = QVBoxLayout(self.thresh_panel)
-        self.thresh_layout.setSpacing(4)
-        self.thresh_layout.setContentsMargins(8, 6, 8, 6)
+        self.thresh_layout.setSpacing(6)
+        self.thresh_layout.setContentsMargins(10, 8, 10, 8)
         ph = QLabel("No threshold loaded yet")
-        ph.setStyleSheet("color:#555; font-size:12px; font-style:italic;")
+        ph.setStyleSheet(
+            f"color:{COLOR_TEXT_DIM}; font-size:{FS_LABEL}px; "
+            f"font-style:italic; background:transparent;"
+        )
         self.thresh_layout.addWidget(ph)
 
         # Buttons
         self.btn_load = QPushButton("📦  Select Model Directory")
-        self.btn_load.setFixedHeight(44)
-        self.btn_load.setStyleSheet(
-            "QPushButton { background:#1a5276; color:white; font-size:14px; font-weight:bold; border-radius:6px; }"
-            "QPushButton:hover { background:#2471a3; }"
-        )
+        self.btn_load.setFixedHeight(42)
+        self.btn_load.setStyleSheet(BTN_ACCENT)
         self.btn_load.clicked.connect(self._load_model)
 
         self.btn_reload = QPushButton("🔄  Change Model")
-        self.btn_reload.setFixedHeight(44)
+        self.btn_reload.setFixedHeight(42)
         self.btn_reload.setEnabled(False)
-        self.btn_reload.setStyleSheet(
-            "QPushButton { background:#5d4037; color:white; font-size:14px; font-weight:bold; border-radius:6px; }"
-            "QPushButton:hover { background:#795548; }"
-            "QPushButton:disabled { background:#333; color:#666; }"
-        )
+        self.btn_reload.setStyleSheet(BTN_NEUTRAL)
         self.btn_reload.clicked.connect(self._change_model)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color:#333;")
+        sep.setStyleSheet(f"background:{COLOR_BORDER}; max-height:1px; border:none;")
 
         # GPU / system info
         gpu_title = QLabel("System Info")
-        gpu_title.setFont(QFont("Arial", 13, QFont.Bold))
-        gpu_title.setStyleSheet("color:#aaa; margin-top:10px;")
+        gpu_title.setStyleSheet(
+            f"color:{COLOR_TEXT_MUTED}; font-size:{FS_BODY}px; "
+            f"font-weight:600; background:transparent;"
+        )
 
         self.lbl_gpu = QLabel("Checking…")
         self.lbl_gpu.setStyleSheet(
-            "background:#111; color:#0f0; font-family:monospace; font-size:12px; "
-            "padding:10px; border-radius:6px;"
+            f"QLabel {{ background:#0b0d10; color:{COLOR_SUCCESS}; "
+            f"font-family:'JetBrains Mono','Fira Code','Menlo','Consolas',monospace; "
+            f"font-size:12px; padding:10px 12px; border:1px solid {COLOR_BORDER}; "
+            f"border-radius:6px; }}"
         )
         self.lbl_gpu.setWordWrap(True)
 
         layout.addWidget(title)
         layout.addWidget(self.card)
-        layout.addSpacing(8)
+        layout.addSpacing(4)
         layout.addWidget(self.btn_load)
         layout.addWidget(self.btn_reload)
-        layout.addSpacing(10)
+        layout.addSpacing(8)
         layout.addWidget(thresh_title)
         layout.addWidget(self.thresh_panel)
-        layout.addSpacing(6)
+        layout.addSpacing(4)
         layout.addWidget(sep)
         layout.addWidget(gpu_title)
         layout.addWidget(self.lbl_gpu)
@@ -173,33 +195,46 @@ class ModelTab(QWidget):
         self._clear_thresh_panel()
         if not thresholds:
             lbl = QLabel("⚠  dynamic_threshold.pkl not found in model folder")
-            lbl.setStyleSheet("color:#f80; font-size:12px;")
+            lbl.setStyleSheet(
+                f"color:{COLOR_WARN}; font-size:{FS_LABEL}px; background:transparent;"
+            )
             self.thresh_layout.addWidget(lbl)
             return
+        mono = "'JetBrains Mono','Fira Code','Menlo','Consolas',monospace"
         for entry in thresholds:
             row = QFrame()
-            row.setStyleSheet("background:#1c1f2b; border-radius:5px; padding:4px 6px;")
+            row.setStyleSheet(
+                f"QFrame {{ background:{COLOR_SURFACE_HI}; "
+                f"border:1px solid {COLOR_BORDER}; border-radius:5px; }}"
+            )
             row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(4, 2, 4, 2)
+            row_layout.setContentsMargins(8, 4, 8, 4)
             row_layout.setSpacing(10)
             lbl_name = QLabel(entry["label"])
-            lbl_name.setStyleSheet("color:#8ab4f8; font-size:12px; font-weight:bold;")
+            lbl_name.setStyleSheet(
+                f"color:{COLOR_PRIMARY}; font-size:{FS_LABEL}px; "
+                f"font-weight:600; background:transparent;"
+            )
             lbl_name.setMinimumWidth(130)
             if entry.get("error"):
                 lbl_val = QLabel(f"❌  Read error: {entry['error']}")
-                lbl_val.setStyleSheet("color:#f55; font-size:12px;")
+                lbl_val.setStyleSheet(
+                    f"color:{COLOR_DANGER}; font-size:{FS_LABEL}px; background:transparent;"
+                )
                 row_layout.addWidget(lbl_name)
                 row_layout.addWidget(lbl_val)
             else:
                 lbl_raw = QLabel(f"Raw: {entry['raw']:.6f}")
                 lbl_raw.setStyleSheet(
-                    "background:#22263a; color:#ccc; font-family:monospace; "
-                    "font-size:12px; padding:2px 8px; border-radius:4px;"
+                    f"QLabel {{ background:{COLOR_BORDER}; color:{COLOR_TEXT}; "
+                    f"font-family:{mono}; font-size:{FS_LABEL}px; "
+                    f"padding:2px 8px; border-radius:4px; }}"
                 )
                 lbl_eff = QLabel(f"Effective (×1.25): {entry['effective']:.6f}")
                 lbl_eff.setStyleSheet(
-                    "background:#1a3a2a; color:#5dbb7a; font-family:monospace; "
-                    "font-size:12px; font-weight:bold; padding:2px 8px; border-radius:4px;"
+                    f"QLabel {{ background:#1c3324; color:{COLOR_SUCCESS}; "
+                    f"font-family:{mono}; font-size:{FS_LABEL}px; font-weight:600; "
+                    f"padding:2px 8px; border-radius:4px; }}"
                 )
                 for w in (lbl_name, lbl_raw, lbl_eff):
                     w.setToolTip(entry["path"])
@@ -231,7 +266,10 @@ class ModelTab(QWidget):
         self._load_token += 1
         token = self._load_token
         self.lbl_model_status.setText("⏳ Loading…")
-        self.lbl_model_status.setStyleSheet("color:#ff0; font-size:14px; font-weight:bold;")
+        self.lbl_model_status.setStyleSheet(
+            f"color:{COLOR_WARN}; font-size:{FS_SUBTITLE}px; "
+            f"font-weight:600; background:transparent;"
+        )
         self.btn_load.setEnabled(False)
         self.btn_reload.setEnabled(False)
         self._clear_thresh_panel()
@@ -286,7 +324,10 @@ class ModelTab(QWidget):
                     print(f"🎯  Threshold [{entry['label']}]:  raw={entry['raw']:.6f}  →  effective={entry['effective']:.6f}")
             self.lbl_model_path.setText(f"📁 {path}")
             self.lbl_model_status.setText(f"✅ Model ready  ({elapsed_ms:.0f} ms)")
-            self.lbl_model_status.setStyleSheet("color:#0f0; font-size:14px; font-weight:bold;")
+            self.lbl_model_status.setStyleSheet(
+                f"color:{COLOR_SUCCESS}; font-size:{FS_SUBTITLE}px; "
+                f"font-weight:600; background:transparent;"
+            )
             self.btn_reload.setEnabled(True)
             self.modelLoaded.emit(self.detector, self.roi_coords, thresholds)
             print(f"✅ Model loaded in {elapsed_ms:.2f} ms from: {path}")
@@ -301,7 +342,10 @@ class ModelTab(QWidget):
 
     def _set_failed_ui(self, error: str):
         self.lbl_model_status.setText(f"❌ Failed: {error}")
-        self.lbl_model_status.setStyleSheet("color:#f55; font-size:14px; font-weight:bold;")
+        self.lbl_model_status.setStyleSheet(
+            f"color:{COLOR_DANGER}; font-size:{FS_SUBTITLE}px; "
+            f"font-weight:600; background:transparent;"
+        )
         self.btn_load.setEnabled(True)
         self.btn_reload.setEnabled(self.detector is not None)
 
@@ -313,10 +357,16 @@ class ModelTab(QWidget):
                 pass
             self.detector = None
         self.lbl_model_status.setText("⏳ Waiting for model…")
-        self.lbl_model_status.setStyleSheet("color:#f80; font-size:14px; font-weight:bold;")
+        self.lbl_model_status.setStyleSheet(
+            f"color:{COLOR_WARN}; font-size:{FS_SUBTITLE}px; "
+            f"font-weight:600; background:transparent;"
+        )
         self.lbl_model_path.setText("No model loaded")
         self._clear_thresh_panel()
         lbl = QLabel("No threshold loaded yet")
-        lbl.setStyleSheet("color:#555; font-size:12px; font-style:italic;")
+        lbl.setStyleSheet(
+            f"color:{COLOR_TEXT_DIM}; font-size:{FS_LABEL}px; "
+            f"font-style:italic; background:transparent;"
+        )
         self.thresh_layout.addWidget(lbl)
         self._load_model()

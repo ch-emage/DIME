@@ -18,14 +18,19 @@ from PySide6.QtCore import Qt, Slot
 
 from config import TRAINING_SCRIPT, FEATURE_WINDOW, WINDOW_STEP
 from threads import TrainingThread
-from widgets import FIELD_CSS, GROUP_CSS, BTN_NEUTRAL
+from widgets import (
+    FIELD_CSS, GROUP_CSS, BTN_NEUTRAL, BTN_PRIMARY, BTN_DANGER,
+    COLOR_TEXT_MUTED, COLOR_SUCCESS, COLOR_DANGER, FS_BODY, FS_LABEL,
+)
 
 
 class TrainModelSubTab(QWidget):
     def __init__(self):
         super().__init__()
         self._worker: TrainingThread | None = None
+        self._last_workspace: str = ""
         self._build_ui()
+        self.edit_workspace.textChanged.connect(self._on_workspace_changed)
 
     # ── layout ───────────────────────────────────────────
 
@@ -38,11 +43,10 @@ class TrainModelSubTab(QWidget):
         # Left: config
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border:none; background:#1e1e1e; }")
         cfg_widget = QWidget()
         cfg_layout = QVBoxLayout(cfg_widget)
-        cfg_layout.setContentsMargins(4, 4, 4, 4)
-        cfg_layout.setSpacing(8)
+        cfg_layout.setContentsMargins(6, 6, 6, 6)
+        cfg_layout.setSpacing(10)
         cfg_layout.addWidget(self._build_paths_group())
         cfg_layout.addWidget(self._build_videos_group())
         cfg_layout.addStretch()
@@ -52,24 +56,28 @@ class TrainModelSubTab(QWidget):
         # Right: log
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(4, 4, 4, 4)
+        right_layout.setContentsMargins(6, 6, 6, 6)
+        right_layout.setSpacing(6)
         log_title = QLabel("Training Log")
-        log_title.setStyleSheet("color:#aaa; font-weight:bold; font-size:13px;")
+        log_title.setStyleSheet(
+            f"color:{COLOR_TEXT_MUTED}; font-weight:600; font-size:{FS_BODY}px;"
+        )
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setStyleSheet(
-            "background:#0d0d0d; color:#b5e7a0; font-family:monospace; font-size:12px; border-radius:6px;"
+            "QTextEdit { background:#0b0d10; color:#b5e7a0; "
+            "font-family:'JetBrains Mono','Fira Code','Menlo','Consolas',monospace; "
+            "font-size:12px; border-radius:6px; padding:6px 8px; }"
         )
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(False)
-        self.progress_bar.setFixedHeight(14)
-        self.progress_bar.setStyleSheet(
-            "QProgressBar { border:none; border-radius:4px; background:#222; }"
-            "QProgressBar::chunk { background:#27ae60; border-radius:4px; }"
-        )
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(6)
         self.lbl_progress = QLabel("")
-        self.lbl_progress.setStyleSheet("color:#27ae60; font-size:12px; font-weight:bold;")
+        self.lbl_progress.setStyleSheet(
+            f"color:{COLOR_SUCCESS}; font-size:{FS_LABEL}px; font-weight:600;"
+        )
         right_layout.addWidget(log_title)
         right_layout.addWidget(self.log_view, 1)
         right_layout.addWidget(self.progress_bar)
@@ -80,39 +88,26 @@ class TrainModelSubTab(QWidget):
 
         # Bottom buttons
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
         self.btn_start = QPushButton("▶  Start Training")
         self.btn_start.setFixedHeight(38)
-        self.btn_start.setStyleSheet(
-            "QPushButton { background:#1a6b27; color:white; font-weight:bold; border-radius:4px; }"
-            "QPushButton:hover { background:#27ae60; }"
-            "QPushButton:disabled { background:#333; color:#666; }"
-        )
+        self.btn_start.setStyleSheet(BTN_PRIMARY)
         self.btn_start.clicked.connect(self._start_training)
 
         self.btn_stop = QPushButton("⏹  Stop")
         self.btn_stop.setFixedHeight(38)
         self.btn_stop.setEnabled(False)
-        self.btn_stop.setStyleSheet(
-            "QPushButton { background:#7b241c; color:white; font-weight:bold; border-radius:4px; }"
-            "QPushButton:hover { background:#c0392b; }"
-            "QPushButton:disabled { background:#333; color:#666; }"
-        )
+        self.btn_stop.setStyleSheet(BTN_DANGER)
         self.btn_stop.clicked.connect(self._stop_training)
 
         self.btn_clear_log = QPushButton("🗑  Clear Log")
         self.btn_clear_log.setFixedHeight(38)
-        self.btn_clear_log.setStyleSheet(
-            "QPushButton { background:#2c3e50; color:white; font-weight:bold; border-radius:4px; }"
-            "QPushButton:hover { background:#3d566e; }"
-        )
+        self.btn_clear_log.setStyleSheet(BTN_NEUTRAL)
         self.btn_clear_log.clicked.connect(self.log_view.clear)
 
         self.btn_open_output = QPushButton("📂  Open Output Folder")
         self.btn_open_output.setFixedHeight(38)
-        self.btn_open_output.setStyleSheet(
-            "QPushButton { background:#2c3e50; color:white; font-weight:bold; border-radius:4px; }"
-            "QPushButton:hover { background:#3d566e; }"
-        )
+        self.btn_open_output.setStyleSheet(BTN_NEUTRAL)
         self.btn_open_output.clicked.connect(self._open_output_folder)
 
         btn_row.addWidget(self.btn_start)
@@ -128,7 +123,7 @@ class TrainModelSubTab(QWidget):
     def _row(self, label_text, widget, layout):
         row = layout.rowCount()
         lbl = QLabel(label_text)
-        lbl.setStyleSheet("color:#ccc; font-size:12px;")
+        lbl.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:{FS_LABEL}px;")
         layout.addWidget(lbl, row, 0)
         layout.addWidget(widget, row, 1)
 
@@ -181,7 +176,7 @@ class TrainModelSubTab(QWidget):
 
         sub_row = QHBoxLayout()
         sub_lbl = QLabel("Subdataset name:")
-        sub_lbl.setStyleSheet("color:#ccc; font-size:12px;")
+        sub_lbl.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:{FS_LABEL}px;")
         self.edit_subdataset = QLineEdit("eyeball")
         self.edit_subdataset.setStyleSheet(FIELD_CSS)
         self.edit_subdataset.setMaximumWidth(200)
@@ -191,9 +186,6 @@ class TrainModelSubTab(QWidget):
         layout.addLayout(sub_row)
 
         self.video_list = QListWidget()
-        self.video_list.setStyleSheet(
-            "background:#111; color:#eee; border:1px solid #333; border-radius:4px; font-size:12px;"
-        )
         self.video_list.setSelectionMode(QListWidget.ExtendedSelection)
         self.video_list.setFixedHeight(120)
         layout.addWidget(self.video_list)
@@ -211,7 +203,7 @@ class TrainModelSubTab(QWidget):
         layout.addLayout(btn_row)
 
         note = QLabel("ℹ Videos will be copied into  <workspace>/<subdataset>/train/good/  before training.")
-        note.setStyleSheet("color:#666; font-size:11px;")
+        note.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:11px;")
         note.setWordWrap(True)
         layout.addWidget(note)
 
@@ -223,6 +215,15 @@ class TrainModelSubTab(QWidget):
         path = QFileDialog.getExistingDirectory(self, "Select Workspace / Data Staging Folder")
         if path:
             self.edit_workspace.setText(path)
+
+    def _on_workspace_changed(self, text: str):
+        new_ws = text.strip()
+        if new_ws == self._last_workspace:
+            return
+        self._last_workspace = new_ws
+        if self.video_list.count() > 0:
+            self.video_list.clear()
+            self._log("ℹ  Workspace changed — training video queue cleared.")
 
     def _browse_results(self):
         path = QFileDialog.getExistingDirectory(self, "Select Output / Results Folder")
@@ -346,8 +347,10 @@ class TrainModelSubTab(QWidget):
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.progress_bar.setVisible(False)
-        color = "#27ae60" if success else "#e74c3c"
-        self.lbl_progress.setStyleSheet(f"color:{color}; font-size:13px; font-weight:bold;")
+        color = COLOR_SUCCESS if success else COLOR_DANGER
+        self.lbl_progress.setStyleSheet(
+            f"color:{color}; font-size:{FS_BODY}px; font-weight:600;"
+        )
         self.lbl_progress.setText(message)
         self._log(f"\n{'✅' if success else '❌'}  {message}\n")
 

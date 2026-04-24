@@ -11,7 +11,11 @@ from PySide6.QtCore import Slot, QLocale
 from config import VIDEO_CONFIRM_FRAMES, VIDEO_HOLD_FRAMES
 from inference import AnomalyDebouncer
 from threads import ImageInferenceThread, VideoInferenceThread
-from widgets import FrameView, StatsBar, make_anomaly_alert_label, set_anomaly_label
+from widgets import (
+    FrameView, StatsBar, make_anomaly_alert_label, set_anomaly_label,
+    BTN_NEUTRAL, BTN_ACCENT, BTN_PRIMARY,
+    COLOR_TEXT_MUTED, FS_LABEL,
+)
 
 
 class MediaTab(QWidget):
@@ -27,7 +31,10 @@ class MediaTab(QWidget):
 
     def _build_ui(self):
         layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
         ctrl = QHBoxLayout()
+        ctrl.setSpacing(6)
 
         self.btn_load_img   = QPushButton("🖼  Load Image")
         self.btn_run_img    = QPushButton("▶  Run on Image")
@@ -35,13 +42,22 @@ class MediaTab(QWidget):
         self.btn_pause      = QPushButton("⏸  Pause")
         self.btn_continue   = QPushButton("▶  Continue")
 
+        # Style: accent for "load" actions, primary for "run", neutral for playback
+        self.btn_load_img.setStyleSheet(BTN_ACCENT)
+        self.btn_run_img.setStyleSheet(BTN_PRIMARY)
+        self.btn_load_video.setStyleSheet(BTN_ACCENT)
+        self.btn_pause.setStyleSheet(BTN_NEUTRAL)
+        self.btn_continue.setStyleSheet(BTN_NEUTRAL)
+
         for btn in (self.btn_load_img, self.btn_run_img, self.btn_load_video,
                     self.btn_pause, self.btn_continue):
             btn.setFixedHeight(38)
             ctrl.addWidget(btn)
 
         ctrl.addSpacing(12)
-        ctrl.addWidget(QLabel("Threshold:"))
+        lbl_thresh = QLabel("Threshold:")
+        lbl_thresh.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:{FS_LABEL}px;")
+        ctrl.addWidget(lbl_thresh)
         self.spin_threshold = QDoubleSpinBox()
         self.spin_threshold.setLocale(QLocale(QLocale.C))
         self.spin_threshold.setDecimals(2)
@@ -53,6 +69,7 @@ class MediaTab(QWidget):
 
         self.btn_apply_thresh = QPushButton("Apply")
         self.btn_apply_thresh.setFixedHeight(38)
+        self.btn_apply_thresh.setStyleSheet(BTN_NEUTRAL)
         self.btn_apply_thresh.clicked.connect(self._apply_threshold)
         ctrl.addWidget(self.btn_apply_thresh)
 

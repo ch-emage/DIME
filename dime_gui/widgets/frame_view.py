@@ -8,13 +8,18 @@ from PySide6.QtWidgets import QLabel, QSizePolicy
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 
+from widgets.theme import COLOR_FRAME_BG, COLOR_BORDER, COLOR_TEXT_DIM
+
 
 class FrameView(QLabel):
     def __init__(self, placeholder="Output"):
         super().__init__(placeholder)
         self.setAlignment(Qt.AlignCenter)
         self.setMinimumSize(480, 270)
-        self.setStyleSheet("background:#111; color:#555; font-size:18px;")
+        self.setStyleSheet(
+            f"QLabel {{ background:{COLOR_FRAME_BG}; color:{COLOR_TEXT_DIM}; "
+            f"font-size:16px; border:1px solid {COLOR_BORDER}; border-radius:8px; }}"
+        )
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def show_frame(self, frame):
